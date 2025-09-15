@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Cafe Finder</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    body, html {
+      margin: 0;
+      height: 100%;
+      font-family: Arial, sans-serif;
+      background: #fcf9f6;
+      color: #3e2723;
+    }
+    #app {
+      display: flex;
+      height: 100%;
+    }
+    /* Sidebar (cafe list) */
+    #sidebar {
+      width: 280px;
+      background: #f3e5ab; /* latte beige */
+      border-right: 2px solid #d7ccc8;
+      overflow-y: auto;
+      padding: 12px;
+    }
+    #sidebar h2 {
+      text-align: center;
+      margin: 0 0 12px;
+      color: #4e342e;
+      font-size: 18px;
+    }
+    #cafe-list {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    #cafe-list li {
+      background: #fffdf9;
+      margin: 6px 0;
+      padding: 10px;
+      border-radius: 6px;
+      border: 1px solid #ddd;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    #cafe-list li:hover {
+      background: #d7ccc8; /* mocha hover */
+      font-weight: bold;
+    }
+    /* Map area */
+    #map {
+      flex: 1;
+      height: 100%;
+    }
+    .popup-content {
+      font-size: 14px;
+      line-height: 1.4;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div id="sidebar">
+      <h2>☕ Cafes Nearby</h2>
+      <ul id="cafe-list"><li>Finding cafes...</li></ul>
+    </div>
+    <div id="map"></div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    // Custom icons
+    const cafeIcon = L.icon({
+      iconUrl: "https://cdn-icons-png.flaticon.com/512/2935/2935401.png", // coffee bean
+      iconSize: [26, 26],
+      iconAnchor: [13, 26],
+      popupAnchor: [0, -24]
+    });
+
+    const userIcon = L.icon({
+      iconUrl: "https://maps.google.com/mapfiles/ms/icons/blue-dot.png",
+      iconSize: [30, 30],
+      iconAnchor: [15, 30],
+      popupAnchor: [0, -28]
+    });
+
+    // Initialize map
+    const map = L.map("map").setView([40.7128, -74.0060], 14);
+
+    // Warm map tiles
+    L.tileLayer("https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap contributors"
+    }).addTo(map);
+
+    // Locate user
+    map.locate({ setView: true, maxZoom: 16 });
+
+    map.on("locationfound", (e) => {
+      L.marker(e.latlng, { icon: userIcon })
+        .addTo(map)
+        .bindPopup("<b>You are here</b>")
+        .openPopup();
+
+      fetchCafes(e.latlng.lat, e.latlng.lng);
+    });
+
+    map.on("locationerror", () => {
+      alert("Location access denied. Showing New York City.");
+      fetchCafes(40.7128, -74.0060);
+    });
+
+    // Get cafes from Overpass API
+    function fetchCafes(lat, lng) {
+      const query = `
+        [out:json];
+        node["amenity"="cafe"](around:2000,${lat},${lng});
+        out;
+      `;
+      fetch("https://overpass-api.de/api/interpreter", {
+        method: "POST",
+        body: query
+      })
+      .then(res => res.json())
+      .then(data => {
+        const list = document.getElementById("cafe-list");
+        list.innerHTML = "";
+
+        if (!data.elements.length) {
+          list.innerHTML = "<li>No cafes found nearby.</li>";
+          return;
+        }
+
+        data.elements.forEach((place) => {
+          const name = place.tags.name || "Unnamed Cafe";
+          const address = place.tags["addr:street"] || "No address available";
+
+          const marker = L.marker([place.lat, place.lon], { icon: cafeIcon })
+            .addTo(map)
+            .bindPopup(`
+              <div class="popup-content">
+                <b>${name}</b><br>${address}
+              </div>
+            `);
+
+          // Add to sidebar
+          const li = document.createElement("li");
+          li.textContent = name;
+          li.onclick = () => {
+            map.setView([place.lat, place.lon], 17);
+            marker.openPopup();
+          };
+          list.appendChild(li);
+        });
+      })
+      .catch(err => {
+        console.error("Error fetching cafes:", err);
+        document.getElementById("cafe-list").innerHTML = "<li>Could not load cafes.</li>";
+      });
+    }
+  </script>
+</body>
+</html>
